@@ -20,8 +20,14 @@ dev = [
     "ruff>=0.1",
 ]
 
+[tool.setuptools]
+packages = ["tighnet"]
+
 [tool.ruff]
 line-length = 99
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+cache-dir = "./.uv_cache"

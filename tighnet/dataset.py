@@ -50,11 +50,6 @@ def _midi_to_notes(midi_path: Path, tempo_bpm: float | None = None) -> list[dict
     notes_on: dict[int, tuple[float, int]] = {}  # pitch -> (onset_ms, velocity)
     result: list[dict] = []
 
-    for msg in mido.merge_tracks(mid.tracks):
-        # mido merge_tracks gives delta times; accumulate.
-        pass
-
-    # Re-parse with absolute time tracking.
     abs_time_ticks = 0
     ticks_per_beat = mid.ticks_per_beat
     current_tempo = file_tempo
