@@ -9,28 +9,31 @@ TighNet is a learned MIDI onset correction system for piano loop recordings. It 
 ## Commands
 
 ```bash
-# Install (editable + dev deps)
-pip install -e ".[dev]"
+# Install (uses uv via asdf)
+uv sync --extra dev
 
 # Tests
-pytest                        # all tests
-pytest tests/test_model.py    # single file
-pytest -k test_name           # single test
+uv run pytest                        # all tests
+uv run pytest tests/test_model.py    # single file
+uv run pytest -k test_name           # single test
 
 # Lint & format
-ruff check tighnet tests
-ruff format tighnet tests
+uv run ruff check tighnet tests
+uv run ruff format tighnet tests
+
+# Preprocess MIDI dataset (run once, creates JSON cache)
+uv run python scripts/preprocess.py data/adl-piano-midi -o data/sliced.json
 
 # Train
-python -m tighnet.train /path/to/midi --arch dilated --epochs 100 --output-dir checkpoints
+uv run python -m tighnet.train --cache data/sliced.json --device mps --arch dilated --epochs 100
 
 # Export to CoreML
-python -m tighnet.export_coreml checkpoints/best.pt --output TighNet.mlpackage
+uv run python -m tighnet.export_coreml checkpoints/best.pt --output TighNet.mlpackage
 ```
 
 ## Architecture
 
-**Data flow:** MIDI files → bar-aligned slices → synthetic perturbation → (noisy, clean, offset) tensors → train model → checkpoint → CoreML export.
+**Data flow:** MIDI files → per-track grid alignment filter → bar-aligned slices → JSON cache (`scripts/preprocess.py`) → synthetic perturbation → (noisy, clean, offset) tensors → train model → checkpoint → CoreML export.
 
 **Inference flow:** Recorded MIDI notes → onset tensor → model → per-frame offsets → cluster notes → apply corrections → corrected MIDI.
 

@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
+from tqdm import tqdm
 
 from .dataset import MidiQuantizationDataset
 from .model import DilatedCNN, UNet1D
@@ -34,7 +35,8 @@ def onset_weighted_mse(
 
 
 def train(
-    midi_dir: str,
+    midi_dir: str | None = None,
+    cache_path: str | None = None,
     output_dir: str = "checkpoints",
     arch: str = "dilated",
     epochs: int = 100,
@@ -50,6 +52,7 @@ def train(
 
     Args:
         midi_dir: Path to directory containing MIDI files.
+        cache_path: Path to pre-sliced JSON cache (from scripts/preprocess.py).
         output_dir: Where to save checkpoints.
         arch: Architecture — "dilated" or "unet".
         epochs: Number of training epochs.
@@ -69,14 +72,16 @@ def train(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Dataset.
+    source = cache_path or midi_dir
     dataset = MidiQuantizationDataset(
         midi_dir=midi_dir,
+        cache_path=cache_path,
         max_frames=max_frames,
         bars_per_slice=bars_per_slice,
         perturb_config=PerturbConfig(),
         seed=seed,
     )
-    print(f"Loaded {len(dataset)} training examples from {midi_dir}")
+    print(f"Loaded {len(dataset)} training examples from {source}")
 
     if len(dataset) == 0:
         raise ValueError(f"No MIDI examples found in {midi_dir}")
@@ -113,7 +118,8 @@ def train(
         train_loss_sum = 0.0
         train_count = 0
 
-        for noisy, _clean, offset_target in train_loader:
+        batch_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{epochs}", leave=False)
+        for noisy, _clean, offset_target in batch_bar:
             noisy = noisy.to(device)
             offset_target = offset_target.to(device)
 
@@ -130,6 +136,7 @@ def train(
 
             train_loss_sum += loss.item() * noisy.size(0)
             train_count += noisy.size(0)
+            batch_bar.set_postfix(loss=f"{loss.item():.4f}")
 
         scheduler.step()
         avg_train_loss = train_loss_sum / max(train_count, 1)
@@ -170,7 +177,8 @@ def train(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train TighNet onset correction model")
-    parser.add_argument("midi_dir", help="Path to directory of MIDI files")
+    parser.add_argument("midi_dir", nargs="?", help="Path to directory of MIDI files")
+    parser.add_argument("--cache", help="Path to pre-sliced JSON cache (from scripts/preprocess.py)")
     parser.add_argument("--output-dir", default="checkpoints")
     parser.add_argument("--arch", choices=["dilated", "unet"], default="dilated")
     parser.add_argument("--epochs", type=int, default=100)
@@ -182,8 +190,12 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
+    if not args.midi_dir and not args.cache:
+        parser.error("Either midi_dir or --cache must be provided")
+
     train(
         midi_dir=args.midi_dir,
+        cache_path=args.cache,
         output_dir=args.output_dir,
         arch=args.arch,
         epochs=args.epochs,
